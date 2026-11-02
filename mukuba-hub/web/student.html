@@ -1,0 +1,33 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>My Dashboard — Mukuba Hub</title><link rel="stylesheet" href="css/style.css"></head><body>
+<main id="m"></main>
+<script src="config.js"></script>
+<script type="module">
+import {sb,layout,requireRole,esc,msg,friendly,fmtDate,label,badge,tabs,DAYS,$,$$} from "./js/app.js";
+const me=await requireRole(["student"]);if(!me)throw 0;await layout("student.html");
+$("#m").innerHTML=`<h1>Welcome, ${esc(me.full_name)}</h1><div class="chips"><a class="btn sm" href="jobs.html">Browse jobs</a><a class="btn sm gold" href="loan.html">Apply for a loan</a><a class="btn sm ghost" href="messages.html">Message administration</a></div><div id="t"></div>`;
+tabs($("#t"),[
+["applications","Job applications",async el=>{const{data,error}=await sb.from("job_applications").select("*,jobs(title,companies(name))").eq("student_id",me.id).order("created_at",{ascending:false});
+ el.innerHTML=error?`<div class="notice err">${esc(friendly(error))}</div>`:!data.length?'<div class="empty">You have not applied for any jobs yet.</div>':
+ `<div class="tablewrap"><table><tr><th>Job</th><th>Company</th><th>Applied</th><th>Status</th></tr>${data.map(a=>`<tr><td>${esc(a.jobs?.title)}</td><td>${esc(a.jobs?.companies?.name)}</td><td>${fmtDate(a.created_at)}</td><td>${badge(a.status)}${a.company_note?`<br><small>${esc(a.company_note)}</small>`:""}</td></tr>`).join("")}</table></div>`;}],
+["loans","Loan applications",async el=>{const{data,error}=await sb.from("loan_applications").select("id,reference,business_name,amount_requested,status,rejection_reason,admin_note,approved_amount,repayment_terms,created_at").eq("student_id",me.id).order("created_at",{ascending:false});
+ if(error)return el.innerHTML=`<div class="notice err">${esc(friendly(error))}</div>`;
+ if(!data.length)return el.innerHTML='<div class="empty">No loan applications yet. <a href="loan.html">Start one</a>.</div>';
+ const reps={};const{data:r}=await sb.from("loan_repayments").select("*").in("loan_id",data.map(l=>l.id));(r||[]).forEach(x=>(reps[x.loan_id]??=[]).push(x));
+ el.innerHTML=data.map(l=>{const paid=(reps[l.id]||[]).reduce((s,x)=>s+ +x.amount,0);return `<div class="card" style="margin:12px 0"><b>${esc(l.reference)}</b> ${badge(l.status)}<h3>${esc(l.business_name)}</h3><p>Requested ZMW ${esc(l.amount_requested)} · submitted ${fmtDate(l.created_at)}</p>
+ ${l.status==="more_info"?`<div class="notice info"><b>More information required:</b> ${esc(l.admin_note||"")} — reply via <a href="messages.html">messages</a>.</div>`:""}
+ ${l.status==="rejected"?`<div class="notice err">Reason: ${esc(l.rejection_reason||"Not stated")}</div>`:""}
+ ${l.status==="approved"?`<div class="notice ok">Approved amount: ZMW ${esc(l.approved_amount)}<br>Terms: ${esc(l.repayment_terms||"")}<br>Repaid so far: ZMW ${paid.toFixed(2)}</div>`:""}</div>`}).join("");}],
+["news","Announcements",async el=>{const{data}=await sb.from("posts").select("title,body,category,pinned,created_at").order("pinned",{ascending:false}).order("created_at",{ascending:false}).limit(10);
+ el.innerHTML=!data?.length?'<div class="empty">No announcements yet.</div>':data.map(p=>`<div class="card ${p.pinned?"pin":""}" style="margin:10px 0"><span class="chip gold">${esc(p.category)}</span><h3>${esc(p.title)}</h3><p>${esc(p.body)}</p><small>${fmtDate(p.created_at)}</small></div>`).join("")+'<p><a href="news.html">See all</a></p>';}],
+["profile","My profile",el=>{const a=me.availability||{};
+ el.innerHTML=`<form class="card" id="pf"><div id="pm"></div><label>Full name</label><input name="full_name" value="${esc(me.full_name)}" required><div class="row"><div><label>Phone</label><input name="phone" value="${esc(me.phone)}"></div><div><label>Programme</label><input name="programme" value="${esc(me.programme)}"></div></div>
+ <div class="row"><div><label>School</label><input name="school" value="${esc(me.school)}"></div><div><label>Year</label><input name="year_of_study" type="number" min="1" max="7" value="${esc(me.year_of_study)}"></div></div>
+ <h3>My timetable availability</h3><div class="days" id="dd">${DAYS.map(([k,n])=>`<label><input type="checkbox" value="${k}" ${(a.days||[]).includes(k)?"checked":""}> ${n}</label>`).join("")}</div>
+ <div class="row"><div><label>Free from</label><input type="time" name="from" value="${esc(a.from||"")}"></div><div><label>Free until</label><input type="time" name="to" value="${esc(a.to||"")}"></div></div>
+ <p><button class="btn">Save</button></p></form>`;
+ $("#pf").onsubmit=async e=>{e.preventDefault();const d=Object.fromEntries(new FormData(e.target));
+  const{error}=await sb.from("profiles").update({full_name:d.full_name,phone:d.phone,programme:d.programme,school:d.school,year_of_study:+d.year_of_study||null,availability:{days:$$("#dd input:checked").map(i=>i.value),from:d.from,to:d.to}}).eq("id",me.id);
+  msg($("#pm"),error?friendly(error):"Profile saved.",error?"err":"ok");};}]
+]);
+</script></body></html>

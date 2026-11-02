@@ -1,0 +1,71 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Business Loan Application — Mukuba Hub</title><link rel="stylesheet" href="css/style.css"></head><body>
+<main id="m" style="max-width:780px"></main>
+<script src="config.js"></script>
+<script type="module">
+import {sb,layout,configBanner,esc,msg,friendly,upload,$,$$} from "./js/app.js";
+const me=await layout("loan.html");
+const M=$("#m");
+if(!me){M.innerHTML=`${configBanner()}<h1>Student Business Loans</h1><div class="card"><p>Registered Mukuba University students can apply for business funding here. Approval is decided solely by authorised administrators; submitting an application does not guarantee a loan.</p><a class="btn" href="login.html?next=loan.html">Log in or register to apply</a></div>`;}
+else if(me.role!=="student"){M.innerHTML=`<div class="notice info">Loan applications are for student accounts only.</div>`;}
+else start();
+function start(){
+const steps=["Personal","Business","Loan","Next of kin","Identity","Declaration"];let s=0;const D={};const FILES={};
+const DOCS=[["nrc_front","NRC — front","Confirms your identity and that your NRC number matches."],["nrc_back","NRC — back","Completes verification of your NRC."],["student_id","Student ID card","Confirms you are a registered Mukuba University student."],["passport_photo","Passport-size photo","A recent photo for your file."],["selfie","Selfie holding your NRC","Lets the administrator compare your face with your NRC. Your face and the NRC must both be clearly visible."]];
+const F=(n,l,t="text",x="")=>`<label>${l}</label><input name="${n}" type="${t}" ${x} required value="${esc(D[n]??"")}">`;
+const T=(n,l)=>`<label>${l}</label><textarea name="${n}" required>${esc(D[n]??"")}</textarea>`;
+const pre={full_name:me.full_name,student_number:me.student_number,nrc_number:me.nrc_number,phone:me.phone,email:me.email,school:me.school,programme:me.programme,year_of_study:me.year_of_study};
+for(const k in pre)D[k]??=pre[k]??"";
+const views=[
+()=>`${F("full_name","Full name")}<div class="row"><div>${F("student_number","Student number")}</div><div>${F("nrc_number","NRC number")}</div></div><div class="row"><div>${F("phone","Phone","tel")}</div><div>${F("email","Email","email")}</div></div>${F("school","Faculty / School")}<div class="row"><div>${F("programme","Programme of study")}</div><div>${F("year_of_study","Current year","number",'min="1" max="7"')}</div></div>${T("residential_address","Residential address")}`,
+()=>`${F("business_name","Business name")}${F("business_type","Type of business")}<label>Registration status</label><select name="registration_status" required>${["Registered","Not registered","Registration in progress"].map(o=>`<option ${D.registration_status===o?"selected":""}>${o}</option>`).join("")}</select>
+<label>Registration number (if applicable)</label><input name="registration_number" value="${esc(D.registration_number??"")}">${F("business_location","Business location")}${T("business_description","Description of the business")}${F("business_nature","Nature of the business (e.g. retail, services, farming)")}
+<label>Is the business…</label><select name="operating_status" required><option value="operating" ${D.operating_status==="operating"?"selected":""}>Already operating</option><option value="proposed" ${D.operating_status==="proposed"?"selected":""}>Proposed (not started)</option></select>
+<div class="row"><div>${F("capital_required","Estimated capital required (ZMW)","number",'min="1" step="0.01"')}</div><div>${F("amount_requested","Loan amount requested (ZMW)","number",'min="1" step="0.01"')}</div></div>${T("funds_usage","How the funds will be used")}`,
+()=>`${T("loan_reason","Why do you need the loan?")}${T("business_idea","Explain your business idea in detail")}${T("expected_benefits","Expected benefits of the loan")}${T("growth_plan","How will the loan help the business grow?")}${F("repayment_period_months","Proposed repayment period (months)","number",'min="1" max="120"')}${T("repayment_plan","Proposed repayment plan")}${T("repayment_source","Expected source of repayment")}`,
+()=>`${F("nok_name","Next of kin — full name")}${F("nok_relationship","Relationship to you")}<div class="row"><div>${F("nok_phone","Phone","tel")}</div><div><label>Alternative phone</label><input name="nok_alt_phone" type="tel" value="${esc(D.nok_alt_phone??"")}"></div></div>${T("nok_address","Residential address")}`,
+()=>`<div class="notice info"><b>Why we collect this.</b> These documents are used only to verify your identity and prevent fraud. They are stored in a private, access-controlled vault and viewed only by authorised administrators. See the <a href="privacy.html" target="_blank">Privacy Policy</a>.</div>
+<label style="font-weight:400"><input type="checkbox" id="consent" ${D.consent?"checked":""}> I consent to Mukuba University Student Opportunity Hub collecting and processing my NRC, student ID, photographs and selfie for identity verification of this loan application.</label>
+<div id="docs" ${D.consent?"":'style="display:none"'}>${DOCS.map(([k,t,w])=>`<div class="card cam" style="margin:12px 0" data-k="${k}"><b>${t}</b><br><small>${w}</small><div class="pv" style="margin:8px 0">${FILES[k]?`<img src="${URL.createObjectURL(FILES[k])}" alt="">`:'<em>Nothing added yet</em>'}</div>
+<input type="file" accept="image/*" ${k==="selfie"?'capture="user"':""} class="fi" style="display:none"><button type="button" class="btn sm ghost up">Upload file</button> <button type="button" class="btn sm cap">Use camera</button> ${FILES[k]?'<button type="button" class="btn sm bad rt">Retake / remove</button> <span class="chip gold">✓ Ready</span>':""}</div>`).join("")}</div>`,
+()=>`<div class="card"><h3>Summary</h3><p>${esc(D.business_name)} — ZMW ${esc(D.amount_requested)} over ${esc(D.repayment_period_months)} months.</p></div>
+<label style="font-weight:400"><input type="checkbox" id="dec" required> I declare that all information and documents I have supplied are true and accurate. I understand false information may lead to rejection and referral to the university.</label>
+<label style="font-weight:400"><input type="checkbox" id="prv" required> I accept the <a href="privacy.html" target="_blank">Privacy Policy</a> and <a href="terms.html" target="_blank">Terms of Use</a> and the processing of my personal data.</label>
+<div class="notice info">Submitting does not mean your loan is approved. Approval is decided by authorised administrators.</div>`];
+function draw(){
+ M.innerHTML=`${configBanner()}<h1>Business Loan Application</h1><div class="steps">${steps.map((_,i)=>`<div class="${i<=s?"done":""}"></div>`).join("")}</div><p><b>Step ${s+1} of 6: ${steps[s]}</b></p><div id="msg"></div>
+ <form class="card" id="fm">${views[s]()}<p style="margin-top:18px">${s?'<button type="button" class="btn ghost" id="bk">Back</button> ':""}<button class="btn gold" id="nx">${s===5?"Submit application":"Next"}</button></p></form>`;
+ if(s===4)bindDocs();
+ if(s===5)$("#nx").type="submit";
+ $("#bk")&&($("#bk").onclick=()=>{collect();s--;draw();});
+ $("#fm").onsubmit=async e=>{e.preventDefault();collect();if(s===4){const miss=DOCS.filter(([k])=>!FILES[k]);if(!D.consent)return msg($("#msg"),"Please give consent to continue.");if(miss.length)return msg($("#msg"),"Still needed: "+miss.map(d=>d[1]).join(", "));}
+  if(s<5){s++;draw();scrollTo(0,0);}else submit();};}
+function collect(){if(s!==4&&s!==5)for(const[k,v]of new FormData($("#fm")))D[k]=v;if(s===4)D.consent=$("#consent")?.checked;}
+function bindDocs(){
+ $("#consent").onchange=e=>{D.consent=e.target.checked;$("#docs").style.display=e.target.checked?"":"none";};
+ $$(".cam").forEach(c=>{const k=c.dataset.k,fi=$(".fi",c);
+  $(".up",c).onclick=()=>fi.click();
+  fi.onchange=()=>{if(fi.files[0]){FILES[k]=fi.files[0];collect();draw();}};
+  const rt=$(".rt",c);if(rt)rt.onclick=()=>{delete FILES[k];collect();draw();};
+  $(".cap",c).onclick=()=>camera(k);});}
+async function camera(k){
+ let stream;try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:k==="selfie"?"user":"environment"}});}catch(e){return msg($("#msg"),"Camera unavailable ("+e.message+"). Use “Upload file” instead; on phones this opens the camera.");}
+ const bg=document.createElement("div");bg.className="modal-bg";bg.innerHTML=`<div class="modal cam"><video autoplay playsinline muted></video><p><button class="btn gold" id="snap">Capture</button> <button class="btn ghost" id="x">Cancel</button></p></div>`;
+ document.body.appendChild(bg);const v=$("video",bg);v.srcObject=stream;const stop=()=>{stream.getTracks().forEach(t=>t.stop());bg.remove();};
+ $("#x",bg).onclick=stop;
+ $("#snap",bg).onclick=()=>{const c=document.createElement("canvas");c.width=v.videoWidth;c.height=v.videoHeight;c.getContext("2d").drawImage(v,0,0);
+  c.toBlob(b=>{FILES[k]=new File([b],k+".jpg",{type:"image/jpeg"});stop();collect();draw();},"image/jpeg",.9);};}
+async function submit(){
+ collect();if(!$("#dec").checked||!$("#prv").checked)return msg($("#msg"),"Please accept the declaration and privacy terms.");
+ const btn=$("#nx");btn.disabled=true;btn.textContent="Uploading securely…";
+ try{
+  const P={};for(const[k]of DOCS)P[k+"_path"]=await upload("identity-docs",me.id,FILES[k]);
+  const row={...D};delete row.consent;
+  row.year_of_study=+row.year_of_study;row.capital_required=+row.capital_required;row.amount_requested=+row.amount_requested;row.repayment_period_months=+row.repayment_period_months;
+  row.registration_number=row.registration_number||null;row.nok_alt_phone=row.nok_alt_phone||null;
+  const{data,error}=await sb.from("loan_applications").insert({...row,student_id:me.id,nrc_front_path:P.nrc_front_path,nrc_back_path:P.nrc_back_path,student_id_path:P.student_id_path,passport_photo_path:P.passport_photo_path,selfie_path:P.selfie_path,consent_data:true,declaration_accurate:true}).select("reference").single();
+  if(error)throw error;
+  M.innerHTML=`<div class="card"><h1>Application submitted ✅</h1><p>Your reference number is</p><p class="stat">${esc(data.reference)}</p><p>Your application is <b>pending review</b>. You will be notified of every update. This is not an approval.</p><a class="btn" href="student.html#loans">Track my application</a></div>`;
+ }catch(e){msg($("#msg"),"Submission failed — nothing was submitted. "+friendly(e));btn.disabled=false;btn.textContent="Submit application";}}
+draw();}
+</script></body></html>

@@ -1,0 +1,20 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>News & Updates — Mukuba Hub</title><link rel="stylesheet" href="css/style.css"></head><body>
+<main id="m"></main>
+<script src="config.js"></script>
+<script type="module">
+import {sb,layout,configBanner,esc,fmtDate,publicUrl,msg,$,$$} from "./js/app.js";
+await layout("news.html");
+const CATS={"":"All",notice:"Notices",job:"Jobs",funding:"Funding",training:"Training",event:"Events",general:"General"};
+$("#m").innerHTML=`${configBanner()}<h1>News & Updates</h1><div class="chips" id="cats">${Object.entries(CATS).map(([k,v])=>`<button class="btn sm ghost" data-c="${k}">${v}</button>`).join("")}</div><div id="msg"></div><div id="list"></div>`;
+let posts=[];
+async function load(){if(!sb)return;const{data,error}=await sb.from("posts").select("*").order("pinned",{ascending:false}).order("created_at",{ascending:false});
+ if(error)return msg($("#msg"),"Could not load posts: "+error.message);posts=data;show("");}
+function show(c){const r=posts.filter(p=>!c||p.category===c);
+ $("#list").innerHTML=!r.length?'<div class="empty">No announcements yet. Be the first to discover new opportunities when they become available.</div>':
+ r.map(p=>`<article class="card ${p.pinned?"pin":""}" style="margin:14px 0"><span class="chip gold">${CATS[p.category]}</span> ${p.pinned?"📌 Pinned":""} ${p.important?"❗ Important":""}
+ <h2>${esc(p.title)}</h2><p>${esc(p.body).replace(/\n/g,"<br>")}</p>
+ ${p.attachment_path?(p.attachment_type==="image"?`<img style="max-width:100%;border-radius:10px" src="${publicUrl("post-media",p.attachment_path)}" alt="">`:`<a class="btn sm" target="_blank" rel="noopener" href="${publicUrl("post-media",p.attachment_path)}">Open PDF</a>`):""}
+ <p><small>${fmtDate(p.created_at)}</small></p></article>`).join("");}
+$$("#cats button").forEach(b=>b.onclick=()=>show(b.dataset.c));load();
+</script></body></html>

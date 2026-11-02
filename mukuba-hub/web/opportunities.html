@@ -1,0 +1,13 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Opportunities — Mukuba Hub</title><link rel="stylesheet" href="css/style.css"></head><body>
+<main id="m"></main>
+<script src="config.js"></script>
+<script type="module">
+import {sb,layout,configBanner,esc,fmtDate,publicUrl,msg,$} from "./js/app.js";
+await layout("opportunities.html");
+const sec=[["funding","Business funding & opportunities"],["training","Skills development programmes"],["event","Upcoming events"]];
+$("#m").innerHTML=`${configBanner()}<h1>Opportunities</h1><div id="msg"></div>${sec.map(([k,t])=>`<h2 id="${k}">${t}</h2><div id="s-${k}"></div>`).join("")}`;
+if(sb){const{data,error}=await sb.from("posts").select("*").in("category",sec.map(s=>s[0])).order("created_at",{ascending:false});
+if(error)msg($("#msg"),error.message);else sec.forEach(([k])=>{const r=data.filter(p=>p.category===k);
+$("#s-"+k).innerHTML=!r.length?'<div class="empty">No opportunities available at the moment. Please check again soon.</div>':r.map(p=>`<div class="card" style="margin:10px 0"><h3>${esc(p.title)}</h3><p>${esc(p.body).replace(/\n/g,"<br>")}</p>${p.attachment_path&&p.attachment_type==="pdf"?`<a class="btn sm" target="_blank" rel="noopener" href="${publicUrl("post-media",p.attachment_path)}">Open document</a>`:""}<p><small>${fmtDate(p.created_at)}</small></p></div>`).join("");});}
+</script></body></html>

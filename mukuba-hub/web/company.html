@@ -1,0 +1,63 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Company Dashboard — Mukuba Hub</title><link rel="stylesheet" href="css/style.css"></head><body>
+<main id="m"></main>
+<script src="config.js"></script>
+<script type="module">
+import {sb,layout,requireRole,esc,msg,friendly,fmtDate,badge,tabs,upload,DAYS,TYPES,$,$$} from "./js/app.js";
+const me=await requireRole(["company"]);if(!me)throw 0;await layout("company.html");
+let co=(await sb.from("companies").select("*").eq("owner_id",me.id).maybeSingle()).data;
+$("#m").innerHTML=`<h1>Company dashboard</h1>${!co?'<div class="notice info">Complete your company profile below. An administrator will verify it before you can post jobs.</div>':co.status==="approved"?'<div class="notice ok">Your company is verified.</div>':co.status==="pending"?'<div class="notice info">Verification pending. You can post jobs once approved.</div>':`<div class="notice err">Status: ${esc(co.status)}. ${esc(co.rejection_reason||"")}</div>`}<div id="t"></div>`;
+const defs=[["profile","Company profile",profile]];
+if(co?.status==="approved")defs.push(["jobs","My jobs",jobs],["applicants","Applicants",applicants]);
+defs.push(["msgs","Contact administration",el=>el.innerHTML='<p><a class="btn" href="messages.html">Open messages</a> — contact administration, and read replies from applicants.</p>']);
+tabs($("#t"),defs);
+function profile(el){const c=co||{};
+ el.innerHTML=`<form class="card" id="cf"><div id="cm"></div><label>Registered company / organisation name</label><input name="name" required value="${esc(c.name)}">
+ <div class="row"><div><label>Business registration number</label><input name="registration_number" required value="${esc(c.registration_number)}"></div><div><label>Contact person</label><input name="contact_person" required value="${esc(c.contact_person||me.full_name)}"></div></div>
+ <div class="row"><div><label>Official email</label><input name="official_email" type="email" required value="${esc(c.official_email||me.email)}"></div><div><label>Phone</label><input name="phone" required value="${esc(c.phone||me.phone)}"></div></div>
+ <label>Physical address</label><input name="address" required value="${esc(c.address)}"><label>Industry / category</label><input name="industry" required value="${esc(c.industry)}">
+ <label>Description</label><textarea name="description" required>${esc(c.description)}</textarea><label>Website or social links</label><input name="website" value="${esc(c.website)}">
+ <label>Logo (image)</label><input type="file" name="logo" accept="image/*"><label>Verification documents (certificate of incorporation, tax clearance… PDF or image, multiple allowed)</label><input type="file" name="docs" multiple accept="application/pdf,image/*">
+ <p><button class="btn">${co?"Save changes":"Submit for verification"}</button></p></form>`;
+ $("#cf").onsubmit=async e=>{e.preventDefault();const f=e.target,fd=new FormData(f),b=f.querySelector("button");b.disabled=true;
+  try{const row={};["name","registration_number","contact_person","official_email","phone","address","industry","description","website"].forEach(k=>row[k]=fd.get(k)||null);
+   const logo=f.logo.files[0];if(logo)row.logo_path=await upload("company-logos",me.id,logo);
+   const docs=[...f.docs.files];if(docs.length)row.verification_doc_paths=[...(co?.verification_doc_paths||[]),...await Promise.all(docs.map(d=>upload("company-docs",me.id,d)))];
+   if(!co&&!docs.length)throw new Error("Please attach at least one verification document.");
+   const q=co?sb.from("companies").update(row).eq("id",co.id):sb.from("companies").insert({...row,owner_id:me.id});
+   const{error}=await q;if(error)throw error;msg($("#cm"),"Saved. "+(co?"":"Awaiting administrator verification."),"ok");setTimeout(()=>location.reload(),1200);}
+  catch(x){msg($("#cm"),"Not saved: "+friendly(x));b.disabled=false;}};}
+async function jobs(el){
+ el.innerHTML='<p><button class="btn" id="nj">+ New job</button></p><div id="jl"></div>';$("#nj").onclick=()=>jobForm();loadJobs();}
+async function loadJobs(){const{data,error}=await sb.from("jobs").select("*").eq("company_id",co.id).order("created_at",{ascending:false});
+ $("#jl").innerHTML=error?`<div class="notice err">${esc(friendly(error))}</div>`:!data.length?'<div class="empty">No jobs yet. New jobs are reviewed by the administration before going live.</div>':
+ data.map(j=>`<div class="card" style="margin:10px 0">${badge(j.status)} <span class="chip">${TYPES[j.employment_type]}</span><h3>${esc(j.title)}</h3><small>Deadline ${j.deadline} · ${j.positions} position(s) ${j.rejection_reason?" · Rejected: "+esc(j.rejection_reason):""}</small><p>
+ <button class="btn sm ghost" data-a="edit" data-id="${j.id}">Edit</button> ${j.status==="published"?`<button class="btn sm ok" data-a="close" data-id="${j.id}">Close (filled)</button>`:""} <button class="btn sm bad" data-a="del" data-id="${j.id}">Delete</button></p></div>`).join("");
+ $$("#jl button").forEach(b=>b.onclick=async()=>{const j=data.find(x=>x.id===b.dataset.id);
+  if(b.dataset.a==="edit")jobForm(j);
+  if(b.dataset.a==="close"){const{error}=await sb.from("jobs").update({status:"closed"}).eq("id",j.id);if(error)alert(friendly(error));loadJobs();}
+  if(b.dataset.a==="del"&&confirm("Delete this job and its applications?")){const{error}=await sb.from("jobs").delete().eq("id",j.id);if(error)alert(friendly(error));loadJobs();}});}
+function jobForm(j={}){const bg=document.createElement("div");bg.className="modal-bg";
+ bg.innerHTML=`<div class="modal"><h2>${j.id?"Edit":"New"} job</h2><div id="jm"></div><form id="jf"><label>Job title</label><input name="title" required value="${esc(j.title)}">
+ <label>Employment type</label><select name="employment_type">${Object.entries(TYPES).map(([k,v])=>`<option value="${k}" ${j.employment_type===k?"selected":""}>${v}</option>`).join("")}</select>
+ <label>Description</label><textarea name="description" required>${esc(j.description)}</textarea><label>Requirements</label><textarea name="requirements" required>${esc(j.requirements)}</textarea><label>Required qualifications</label><textarea name="qualifications" required>${esc(j.qualifications)}</textarea>
+ <label>Location</label><input name="location" required value="${esc(j.location)}"><label>Working days (leave empty for flexible/remote)</label><div class="days" id="wd">${DAYS.map(([k,n])=>`<label><input type="checkbox" value="${k}" ${(j.working_days||[]).includes(k)?"checked":""}>${n}</label>`).join("")}</div>
+ <div class="row"><div><label>Start time</label><input type="time" name="start_hour" value="${esc(j.start_hour?.slice(0,5))}"></div><div><label>End time</label><input type="time" name="end_hour" value="${esc(j.end_hour?.slice(0,5))}"></div></div>
+ <label>Working hours (text, e.g. “Sat & Sun 08:00–16:00”)</label><input name="working_hours" required value="${esc(j.working_hours)}"><label>Salary / compensation (if applicable)</label><input name="salary" value="${esc(j.salary)}">
+ <div class="row"><div><label>Application deadline</label><input type="date" name="deadline" required value="${esc(j.deadline)}"></div><div><label>Positions available</label><input type="number" min="1" name="positions" required value="${esc(j.positions||1)}"></div></div>
+ <label>Application instructions</label><textarea name="instructions" required>${esc(j.instructions)}</textarea><p><button class="btn">Save</button> <button type="button" class="btn ghost" id="cx">Cancel</button></p></form></div>`;
+ document.body.appendChild(bg);$("#cx",bg).onclick=()=>bg.remove();
+ $("#jf",bg).onsubmit=async e=>{e.preventDefault();const d=Object.fromEntries(new FormData(e.target));
+  const row={...d,positions:+d.positions,working_days:$$("#wd input:checked",bg).map(i=>i.value),start_hour:d.start_hour||null,end_hour:d.end_hour||null,salary:d.salary||null};
+  const{error}=j.id?await sb.from("jobs").update(row).eq("id",j.id):await sb.from("jobs").insert({...row,company_id:co.id});
+  if(error)return msg($("#jm",bg),"Not saved: "+friendly(error));bg.remove();loadJobs();};}
+async function applicants(el){const{data,error}=await sb.rpc("company_applicants");
+ el.innerHTML=error?`<div class="notice err">${esc(friendly(error))}</div>`:!data.length?'<div class="empty">No applications yet.</div>':
+ `<div class="tablewrap"><table><tr><th>Applicant</th><th>Job</th><th>Contact</th><th>Status</th><th>Update</th><th></th></tr>${data.map(a=>`<tr><td><b>${esc(a.full_name)}</b><br><small>${esc(a.programme)}, year ${esc(a.year_of_study)}</small>${a.cover_note?`<br><em>${esc(a.cover_note)}</em>`:""}</td><td>${esc(a.job_title)}</td>
+ <td><a href="mailto:${esc(a.email)}">${esc(a.email)}</a><br>${esc(a.phone)}</td><td>${badge(a.status)}</td><td><select data-id="${a.application_id}">${["pending","under_review","shortlisted","approved","rejected","more_info"].map(s=>`<option value="${s}" ${a.status===s?"selected":""}>${s.replace("_"," ")}</option>`).join("")}</select></td><td><button class="btn sm" data-msg="${a.student_id}" data-job="${esc(a.job_title)}">Message</button></td></tr>`).join("")}</table></div>`;
+ $$("button[data-msg]",el).forEach(b=>b.onclick=async()=>{const body=prompt("Message to "+"this applicant (about "+b.dataset.job+"):");if(!body||!body.trim())return;
+  const{data:t,error}=await sb.from("threads").insert({owner_id:me.id,recipient_id:b.dataset.msg,kind:"job_question",subject:"About your application: "+b.dataset.job}).select().single();
+  if(error)return alert("Not sent: "+friendly(error));
+  const{error:e2}=await sb.from("thread_messages").insert({thread_id:t.id,sender_id:me.id,body:body.trim()});alert(e2?"Not sent: "+friendly(e2):"Message sent. The student is notified and can reply under Messages.");});
+ $$("select[data-id]",el).forEach(s=>s.onchange=async()=>{const{error}=await sb.from("job_applications").update({status:s.value}).eq("id",s.dataset.id);if(error)alert(friendly(error));else applicants(el);});}
+</script></body></html>

@@ -1,0 +1,25 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mukuba University Student Opportunity Hub</title><link rel="stylesheet" href="css/style.css"></head><body>
+<main id="m"></main>
+<script src="config.js"></script>
+<script type="module">
+import {sb,layout,configBanner,esc,fmtDate,$} from "./js/app.js";
+await layout("index.html");
+const tiles=[["🕒","Find Part-Time Jobs","Weekend, evening and flexible work that fits your timetable.","jobs.html"],
+["💼","Apply for Business Loans","Request funding to start or grow your business.","loan.html"],
+["🚀","Discover Business Opportunities","Funding calls, partnerships and enterprise programmes.","opportunities.html"],
+["🎓","Explore Skills Development","Training programmes and workshops.","opportunities.html#training"],
+["📰","Latest Announcements & News","Official updates from the administration.","news.html"],
+["🏢","Company & Employer Registration","Register your organisation to recruit students.","login.html?mode=company"],
+["🛟","Student Help & Support","Guides, FAQs and a contact form.","help.html"]];
+$("#m").innerHTML=`${configBanner()}
+<section class="hero"><h1>Welcome to Mukuba University Student Opportunity Hub</h1>
+<p>Discover jobs that fit your timetable, apply for business funding, and hear first about opportunities for Mukuba students.</p>
+<a class="btn gold" href="login.html">Create student account</a> <a class="btn ghost" href="jobs.html">Browse jobs</a></section>
+<div class="grid">${tiles.map(t=>`<a class="card tile" href="${t[3]}"><div class="ic">${t[0]}</div><h3>${t[1]}</h3><p>${t[2]}</p></a>`).join("")}</div>
+<h2 style="margin-top:30px">Latest announcements</h2><div id="news"></div>`;
+if(sb){const {data,error}=await sb.from("posts").select("id,title,body,category,pinned,created_at").order("pinned",{ascending:false}).order("created_at",{ascending:false}).limit(3);
+$("#news").innerHTML=error?`<div class="notice err">Could not load announcements: ${esc(error.message)}</div>`:
+!data.length?`<div class="empty">No announcements yet. Be the first to discover new opportunities when they become available.</div>`:
+data.map(p=>`<div class="card ${p.pinned?"pin":""}" style="margin:10px 0"><span class="chip gold">${esc(p.category)}</span> ${p.pinned?"📌":""}<h3>${esc(p.title)}</h3><p>${esc(p.body.slice(0,200))}${p.body.length>200?"…":""}</p><small>${fmtDate(p.created_at)}</small></div>`).join("");}
+</script></body></html>

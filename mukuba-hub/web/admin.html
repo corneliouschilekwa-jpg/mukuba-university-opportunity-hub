@@ -1,0 +1,110 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Administration — Mukuba Hub</title><link rel="stylesheet" href="css/style.css"></head><body>
+<main id="m"></main>
+<script src="config.js"></script>
+<script type="module">
+import {sb,layout,requireRole,esc,msg,friendly,fmtDate,badge,tabs,upload,signedUrl,csv,label,TYPES,$,$$} from "./js/app.js";
+const me=await requireRole(["admin","loan_officer"]);if(!me)throw 0;await layout("admin.html");
+const isAdmin=me.role==="admin";
+const cnt=async(t,f)=>{let q=sb.from(t).select("id",{count:"exact",head:true});if(f)q=f(q);const{count}=await q;return count??0;};
+const tbl=(h,rows)=>`<div class="tablewrap"><table><tr>${h.map(x=>`<th>${x}</th>`).join("")}</tr>${rows.join("")}</table></div>`;
+const err=(el,e)=>el.innerHTML=`<div class="notice err">${esc(friendly(e))}</div>`;
+const STAT=["pending","under_review","more_info","approved","rejected"];
+$("#m").innerHTML=`<h1>${isAdmin?"Administration":"Loan review"}</h1><div id="t"></div>`;
+const defs=[];
+if(isAdmin)defs.push(["overview","Overview",overview],["companies","Companies",companies],["jobs","Jobs",jobs]);
+defs.push(["loans","Loans",loans]);
+if(isAdmin)defs.push(["posts","Announcements",posts],["messages","Messages",messages],["support","Support",support],["students","Students",students],["activity","Activity",activity]);
+tabs($("#t"),defs);
+
+async function overview(el){
+ const [st,co,jb,ja,ln,pc,nm,ns]=await Promise.all([cnt("profiles",q=>q.eq("role","student")),cnt("companies"),cnt("jobs",q=>q.eq("status","published")),cnt("job_applications",q=>q.eq("status","pending")),cnt("loan_applications"),cnt("companies",q=>q.eq("status","pending")),cnt("threads",q=>q.eq("resolved",false)),cnt("support_requests",q=>q.eq("resolved",false))]);
+ const S=[["Registered students",st],["Registered companies",co],["Published jobs",jb],["Pending job applications",ja],["Loan applications",ln],["Companies awaiting verification",pc],["Open messages",nm],["Open support requests",ns]];
+ el.innerHTML=`<div class="grid">${S.map(([l,v])=>`<div class="card"><div class="stat">${v}</div>${l}</div>`).join("")}</div><div class="card" style="margin-top:16px"><h3>Reports</h3><button class="btn sm" id="rj">Export jobs CSV</button> <button class="btn sm" id="rs">Export students CSV</button> <button class="btn sm" id="rl">Export loans CSV</button></div>`;
+ const exp=(t,cols,f)=>async()=>{const{data,error}=await sb.from(t).select(cols);if(error)return alert(friendly(error));if(!data.length)return alert("Nothing to export yet.");csv(data,f)};
+ $("#rj").onclick=exp("jobs","title,employment_type,location,status,deadline,positions,created_at","jobs.csv");
+ $("#rs").onclick=exp("profiles","full_name,email,phone,student_number,school,programme,year_of_study,suspended,created_at","students.csv");
+ $("#rl").onclick=exp("loan_applications","reference,full_name,student_number,business_name,amount_requested,status,approved_amount,created_at","loans.csv");}
+
+async function companies(el){const{data,error}=await sb.from("companies").select("*").order("created_at",{ascending:false});if(error)return err(el,error);
+ el.innerHTML=!data.length?'<div class="empty">No companies registered yet.</div>':tbl(["Company","Contact","Documents","Status","Actions"],data.map(c=>`<tr><td><b>${esc(c.name)}</b><br><small>Reg# ${esc(c.registration_number)}<br>${esc(c.industry)}</small></td><td>${esc(c.contact_person)}<br>${esc(c.official_email)}<br>${esc(c.phone)}</td>
+ <td>${(c.verification_doc_paths||[]).map((p,i)=>`<a href="#" data-doc="${esc(p)}">Doc ${i+1}</a>`).join("<br>")}</td><td>${badge(c.status)}</td>
+ <td><button class="btn sm ok" data-s="approved" data-id="${c.id}">Approve</button> <button class="btn sm bad" data-s="rejected" data-id="${c.id}">Reject</button> <button class="btn sm ghost" data-s="suspended" data-id="${c.id}">Suspend</button></td></tr>`));
+ $$("[data-doc]",el).forEach(a=>a.onclick=async e=>{e.preventDefault();try{open(await signedUrl("company-docs",a.dataset.doc),"_blank","noopener")}catch(x){alert(friendly(x))}});
+ $$("button[data-s]",el).forEach(b=>b.onclick=async()=>{let reason=null;if(b.dataset.s==="rejected"||b.dataset.s==="suspended"){reason=prompt("Reason (shown to the company):");if(reason===null)return;}
+  const{error}=await sb.from("companies").update({status:b.dataset.s,rejection_reason:reason}).eq("id",b.dataset.id);if(error)alert(friendly(error));companies(el);});}
+
+async function jobs(el){const{data,error}=await sb.from("jobs").select("*,companies(name)").order("created_at",{ascending:false});if(error)return err(el,error);
+ el.innerHTML=!data.length?'<div class="empty">No jobs yet.</div>':tbl(["Job","Company","Deadline","Status","Actions"],data.map(j=>`<tr><td><b>${esc(j.title)}</b><br><small>${TYPES[j.employment_type]} · ${esc(j.location)}</small></td><td>${esc(j.companies?.name)}</td><td>${j.deadline}</td><td>${badge(j.status)}</td>
+ <td><button class="btn sm ok" data-s="published" data-id="${j.id}">Publish</button> <button class="btn sm bad" data-s="rejected" data-id="${j.id}">Reject</button> <button class="btn sm ghost" data-s="expired" data-id="${j.id}">Expire</button></td></tr>`));
+ $$("button[data-s]",el).forEach(b=>b.onclick=async()=>{let reason=null;if(b.dataset.s==="rejected"){reason=prompt("Reason:");if(reason===null)return;}
+  const{error}=await sb.from("jobs").update({status:b.dataset.s,rejection_reason:reason}).eq("id",b.dataset.id);if(error)alert(friendly(error));jobs(el);});}
+
+async function loans(el){el.innerHTML='<div class="row"><div><input id="ls" placeholder="Search name or student number"></div><div><select id="lf"><option value="">All statuses</option>'+STAT.map(s=>`<option value="${s}">${label(s)}</option>`).join("")+'</select></div></div><div id="ll"></div>';
+ let all=[];const{data,error}=await sb.from("loan_applications").select("id,reference,full_name,student_number,business_name,amount_requested,status,created_at").order("created_at",{ascending:false});
+ if(error)return err($("#ll"),error);all=data;
+ const show=()=>{const q=$("#ls").value.toLowerCase(),f=$("#lf").value;const r=all.filter(l=>(!q||(l.full_name+l.student_number).toLowerCase().includes(q))&&(!f||l.status===f));
+  $("#ll").innerHTML=!r.length?'<div class="empty">No loan applications.</div>':tbl(["Ref","Applicant","Business","Amount","Status","Submitted",""],r.map(l=>`<tr><td>${esc(l.reference)}</td><td>${esc(l.full_name)}<br><small>${esc(l.student_number)}</small></td><td>${esc(l.business_name)}</td><td>ZMW ${esc(l.amount_requested)}</td><td>${badge(l.status)}</td><td>${fmtDate(l.created_at)}</td><td><button class="btn sm" data-id="${l.id}">Review</button></td></tr>`));
+  $$("#ll button").forEach(b=>b.onclick=()=>review(b.dataset.id,()=>loans(el)));};
+ $("#ls").oninput=show;$("#lf").onchange=show;show();}
+
+async function review(id,done){const{data:l,error}=await sb.from("loan_applications").select("*").eq("id",id).single();if(error)return alert(friendly(error));
+ const{data:reps}=await sb.from("loan_repayments").select("*").eq("loan_id",id).order("paid_on");
+ const bg=document.createElement("div");bg.className="modal-bg";
+ const kv=(o)=>Object.entries(o).map(([k,v])=>`<tr><th>${label(k)}</th><td>${esc(v)}</td></tr>`).join("");
+ const f=l;const paid=(reps||[]).reduce((s,r)=>s+ +r.amount,0);
+ bg.innerHTML=`<div class="modal"><h2>${esc(l.reference)} ${badge(l.status)}</h2><div id="rm"></div>
+ <h3>Applicant</h3><table>${kv({full_name:f.full_name,student_number:f.student_number,nrc_number:f.nrc_number,phone:f.phone,email:f.email,school:f.school,programme:f.programme,year:f.year_of_study,address:f.residential_address})}</table>
+ <h3>Business</h3><table>${kv({name:f.business_name,type:f.business_type,registration:f.registration_status+" "+(f.registration_number||""),location:f.business_location,status:f.operating_status,nature:f.business_nature,description:f.business_description,capital_required:f.capital_required,amount_requested:f.amount_requested,funds_usage:f.funds_usage})}</table>
+ <h3>Loan proposal</h3><table>${kv({reason:f.loan_reason,idea:f.business_idea,benefits:f.expected_benefits,growth:f.growth_plan,repayment_months:f.repayment_period_months,plan:f.repayment_plan,source:f.repayment_source})}</table>
+ <h3>Next of kin</h3><table>${kv({name:f.nok_name,relationship:f.nok_relationship,phone:f.nok_phone,alt_phone:f.nok_alt_phone,address:f.nok_address})}</table>
+ <h3>Identity documents <small>(private, temporary links; access is logged by Supabase)</small></h3><div class="row" id="docs">Loading…</div>
+ <h3>Decision</h3><label>Note to student (shown when more info is required)</label><textarea id="an">${esc(l.admin_note)}</textarea>
+ <div class="row"><div><label>Approved amount (ZMW)</label><input id="aa" type="number" value="${esc(l.approved_amount)}"></div><div><label>Repayment terms</label><input id="rt" value="${esc(l.repayment_terms)}"></div></div><label>Rejection reason</label><input id="rr" value="${esc(l.rejection_reason)}">
+ <p>${[["under_review","Mark under review",""],["more_info","Request more info","ghost"],["approved","Approve","ok"],["rejected","Reject","bad"]].map(([s,t,c])=>`<button class="btn sm ${c}" data-s="${s}">${t}</button>`).join(" ")} <button class="btn sm ghost" id="cl">Close</button></p>
+ <h3>Repayments (paid ZMW ${paid.toFixed(2)}${l.approved_amount?" of "+l.approved_amount:""})</h3>${(reps||[]).map(r=>`<div>${r.paid_on}: ZMW ${r.amount} ${esc(r.note||"")}</div>`).join("")||"<p>None recorded.</p>"}
+ ${l.status==="approved"?`<div class="row"><div><input id="ra" type="number" step="0.01" placeholder="Amount"></div><div><input id="rn" placeholder="Note"></div><div><button class="btn sm" id="rp">Record repayment</button></div></div>`:""}</div>`;
+ document.body.appendChild(bg);$("#cl",bg).onclick=()=>{bg.remove();done();};
+ const names={nrc_front_path:"NRC front",nrc_back_path:"NRC back",student_id_path:"Student ID",passport_photo_path:"Passport photo",selfie_path:"Selfie with NRC"};
+ Promise.all(Object.entries(names).map(async([k,n])=>{try{const u=await signedUrl("identity-docs",l[k],300);return `<div><b>${n}</b><br><a href="${u}" target="_blank" rel="noopener"><img src="${u}" style="max-width:100%;border-radius:8px"></a></div>`}catch(e){return `<div><b>${n}</b><br>Unavailable: ${esc(e.message)}</div>`}})).then(h=>$("#docs",bg).innerHTML=h.join(""));
+ $$("button[data-s]",bg).forEach(b=>b.onclick=async()=>{const s=b.dataset.s;const u={status:s,admin_note:$("#an",bg).value||null};
+  if(s==="approved"){const a=+$("#aa",bg).value;if(!a)return msg($("#rm",bg),"Enter the approved amount first.");u.approved_amount=a;u.repayment_terms=$("#rt",bg).value||null;}
+  if(s==="rejected"){if(!$("#rr",bg).value)return msg($("#rm",bg),"A rejection reason is required.");u.rejection_reason=$("#rr",bg).value;}
+  if(s==="more_info"&&!$("#an",bg).value)return msg($("#rm",bg),"Say what information is needed.");
+  const{error}=await sb.from("loan_applications").update(u).eq("id",id);if(error)msg($("#rm",bg),friendly(error));else{bg.remove();done();}});
+ const rp=$("#rp",bg);if(rp)rp.onclick=async()=>{const a=+$("#ra",bg).value;if(!a)return;const{error}=await sb.from("loan_repayments").insert({loan_id:id,amount:a,note:$("#rn",bg).value||null,recorded_by:me.id});if(error)msg($("#rm",bg),friendly(error));else{bg.remove();review(id,done);}};}
+
+async function posts(el){el.innerHTML=`<form class="card" id="pf"><div id="pm"></div><h3>Publish announcement</h3><label>Title</label><input name="title" required><label>Category</label><select name="category"><option value="notice">Notice</option><option value="job">Job opportunity</option><option value="funding">Business funding</option><option value="training">Skills training</option><option value="event">Event</option><option value="general">General</option></select>
+ <label>Body</label><textarea name="body" required></textarea><label>Image / poster / PDF (optional)</label><input type="file" name="file" accept="image/*,application/pdf"><label style="font-weight:400"><input type="checkbox" name="pinned"> Pin</label> <label style="font-weight:400"><input type="checkbox" name="important"> Important (notifies all users)</label><p><button class="btn">Publish</button></p></form><div id="pl"></div>`;
+ $("#pf").onsubmit=async e=>{e.preventDefault();const f=e.target,fd=new FormData(f);try{let path=null,type=null;const file=f.file.files[0];
+  if(file){const ext=file.name.split(".").pop().replace(/[^a-z0-9]/gi,"");path=`${me.id}/${crypto.randomUUID()}.${ext}`;const{error}=await sb.storage.from("post-media").upload(path,file,{contentType:file.type});if(error)throw error;type=file.type==="application/pdf"?"pdf":"image";}
+  const{error}=await sb.from("posts").insert({author_id:me.id,title:fd.get("title"),body:fd.get("body"),category:fd.get("category"),pinned:!!fd.get("pinned"),important:!!fd.get("important"),attachment_path:path,attachment_type:type});if(error)throw error;
+  msg($("#pm"),"Published.","ok");f.reset();list();}catch(x){msg($("#pm"),"Not published: "+friendly(x));}};
+ async function list(){const{data,error}=await sb.from("posts").select("*").order("created_at",{ascending:false});if(error)return err($("#pl"),error);
+  $("#pl").innerHTML=!data.length?'<div class="empty">Nothing published yet.</div>':tbl(["Title","Category","Date",""],data.map(p=>`<tr><td>${p.pinned?"📌 ":""}${esc(p.title)}</td><td>${esc(p.category)}</td><td>${fmtDate(p.created_at)}</td><td><button class="btn sm ghost" data-p="${p.id}">${p.pinned?"Unpin":"Pin"}</button> <button class="btn sm bad" data-d="${p.id}">Delete</button></td></tr>`));
+  $$("[data-p]",el).forEach(b=>b.onclick=async()=>{const p=data.find(x=>x.id===b.dataset.p);await sb.from("posts").update({pinned:!p.pinned}).eq("id",p.id);list();});
+  $$("[data-d]",el).forEach(b=>b.onclick=async()=>{if(confirm("Delete this post?")){await sb.from("posts").delete().eq("id",b.dataset.d);list();}});}
+ list();}
+
+async function messages(el){const{data,error}=await sb.from("threads").select("*,profiles(full_name,role)").is("recipient_id",null).order("last_message_at",{ascending:false});if(error)return err(el,error);
+ el.innerHTML=!data.length?'<div class="empty">No messages.</div>':tbl(["From","Subject","Type","Last activity","Status",""],data.map(t=>`<tr><td>${esc(t.profiles?.full_name)}<br><small>${esc(t.profiles?.role)}</small></td><td>${esc(t.subject)}</td><td>${label(t.kind)}</td><td>${fmtDate(t.last_message_at)}</td><td>${t.resolved?badge("approved").replace("Approved","Resolved"):badge("pending").replace("Pending","Open")}</td><td><button class="btn sm" data-id="${t.id}">Open</button></td></tr>`));
+ $$("button[data-id]",el).forEach(b=>b.onclick=()=>thread(data.find(t=>t.id===b.dataset.id),()=>messages(el)));}
+async function thread(t,done){const bg=document.createElement("div");bg.className="modal-bg";document.body.appendChild(bg);
+ async function draw(){const{data}=await sb.from("thread_messages").select("*").eq("thread_id",t.id).order("created_at");
+ bg.innerHTML=`<div class="modal"><h2>${esc(t.subject)}</h2>${(data||[]).map(m=>`<div class="card" style="margin:8px 0;${m.sender_id===t.owner_id?"":"background:#eaf0fb"}"><small>${m.sender_id===t.owner_id?esc(t.profiles?.full_name):"Administration"} · ${fmtDate(m.created_at)}</small><p>${esc(m.body).replace(/\n/g,"<br>")}</p></div>`).join("")}<div id="rm"></div><textarea id="rb" placeholder="Reply…"></textarea><p><button class="btn" id="rs">Reply</button> <button class="btn ok" id="rv">${t.resolved?"Reopen":"Mark resolved"}</button> <button class="btn ghost" id="cl">Close</button></p></div>`;
+ $("#cl",bg).onclick=()=>{bg.remove();done();};
+ $("#rv",bg).onclick=async()=>{const{error}=await sb.from("threads").update({resolved:!t.resolved}).eq("id",t.id);if(error)msg($("#rm",bg),friendly(error));else{bg.remove();done();}};
+ $("#rs",bg).onclick=async()=>{const body=$("#rb",bg).value.trim();if(!body)return;const{error}=await sb.from("thread_messages").insert({thread_id:t.id,sender_id:me.id,body});if(error)msg($("#rm",bg),friendly(error));else draw();};}
+ draw();}
+
+async function support(el){const{data,error}=await sb.from("support_requests").select("*").order("created_at",{ascending:false});if(error)return err(el,error);
+ el.innerHTML=!data.length?'<div class="empty">No support requests.</div>':tbl(["From","Subject","Message","Date",""],data.map(s=>`<tr><td>${esc(s.name)}<br><a href="mailto:${esc(s.email)}">${esc(s.email)}</a></td><td>${esc(s.subject)}</td><td>${esc(s.message)}</td><td>${fmtDate(s.created_at)}</td><td>${s.resolved?"✅ Resolved":`<button class="btn sm ok" data-id="${s.id}">Resolve</button>`}</td></tr>`));
+ $$("button[data-id]",el).forEach(b=>b.onclick=async()=>{await sb.from("support_requests").update({resolved:true}).eq("id",b.dataset.id);support(el);});}
+
+async function students(el){const{data,error}=await sb.from("profiles").select("*").neq("role","admin").order("created_at",{ascending:false});if(error)return err(el,error);
+ el.innerHTML=!data.length?'<div class="empty">No accounts yet.</div>':tbl(["Name","Role","Student #","Contact","Status",""],data.map(p=>`<tr><td>${esc(p.full_name)}</td><td>${esc(p.role)}</td><td>${esc(p.student_number)}</td><td>${esc(p.email)}<br>${esc(p.phone)}</td><td>${p.suspended?badge("suspended"):badge("approved").replace("Approved","Active")}</td><td><button class="btn sm ${p.suspended?"ok":"bad"}" data-id="${p.id}" data-v="${!p.suspended}">${p.suspended?"Reinstate":"Suspend"}</button></td></tr>`));
+ $$("button[data-id]",el).forEach(b=>b.onclick=async()=>{if(b.dataset.v==="true"&&!confirm("Suspend this account?"))return;const{error}=await sb.from("profiles").update({suspended:b.dataset.v==="true"}).eq("id",b.dataset.id);if(error)alert(friendly(error));students(el);});}
+
+async function activity(el){const{data,error}=await sb.from("activity_log").select("*").order("created_at",{ascending:false}).limit(100);if(error)return err(el,error);
+ el.innerHTML=!data.length?'<div class="empty">No activity recorded yet.</div>':tbl(["When","Action","Entity"],data.map(a=>`<tr><td>${fmtDate(a.created_at)}</td><td>${esc(a.action)}</td><td>${esc(a.entity)} ${esc(a.entity_id)}</td></tr>`));}
+</script></body></html>

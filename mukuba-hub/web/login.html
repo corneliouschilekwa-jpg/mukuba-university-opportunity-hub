@@ -1,0 +1,47 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Login / Register — Mukuba Hub</title><link rel="stylesheet" href="css/style.css"></head><body>
+<main id="m" style="max-width:640px"></main>
+<script src="config.js"></script>
+<script type="module">
+import {sb,layout,configBanner,esc,msg,friendly,$} from "./js/app.js";
+await layout("login.html");
+const q=new URLSearchParams(location.search);let mode=q.get("mode")||"login";
+const next=q.get("next")||"";
+const SCHOOLS=["School of Pharmacy","School of Business","School of Engineering and the Built Environment","School of Natural Resources","School of Education","School of Mines and Mineral Sciences","School of Humanities and Social Sciences","School of Medicine and Health Sciences","Other"];
+function render(){
+$("#m").innerHTML=`${configBanner()}<div class="card"><div class="tabs"><button data-m="login">Login</button><button data-m="student">Student registration</button><button data-m="company">Company registration</button><button data-m="reset">Forgot password</button></div><div id="msg"></div><div id="f"></div></div>`;
+document.querySelectorAll(".tabs button").forEach(b=>{b.classList.toggle("on",b.dataset.m===mode);b.onclick=()=>{mode=b.dataset.m;render()}});
+const f=$("#f");
+if(mode==="login")f.innerHTML=`<form id="fm"><label>Email</label><input name="email" type="email" required autocomplete="email"><label>Password</label><input name="password" type="password" required autocomplete="current-password"><p><button class="btn">Login</button></p></form>`;
+if(mode==="reset")f.innerHTML=`<form id="fm"><p>Enter your account email and we will send a password reset link.</p><label>Email</label><input name="email" type="email" required><p><button class="btn">Send reset link</button></p></form>`;
+if(mode==="student")f.innerHTML=`<form id="fm"><label>Full name</label><input name="full_name" required>
+<div class="row"><div><label>Student number</label><input name="student_number" required></div><div><label>NRC number</label><input name="nrc_number" required placeholder="000000/00/1"></div></div>
+<div class="row"><div><label>Email</label><input name="email" type="email" required></div><div><label>Phone</label><input name="phone" type="tel" required></div></div>
+<label>School / Faculty</label><select name="school" required><option value="">Select…</option>${SCHOOLS.map(s=>`<option>${s}</option>`).join("")}</select>
+<div class="row"><div><label>Programme of study</label><input name="programme" required></div><div><label>Current year</label><select name="year_of_study" required>${[1,2,3,4,5,6].map(y=>`<option>${y}</option>`).join("")}</select></div></div>
+<label>Gender (optional)</label><select name="gender"><option value="">Prefer not to say</option><option>Female</option><option>Male</option><option>Other</option></select>
+<label>Password (min 8 characters)</label><input name="password" type="password" minlength="8" required autocomplete="new-password">
+<label style="font-weight:400"><input type="checkbox" required> I agree to the <a href="terms.html" target="_blank">Terms</a> and <a href="privacy.html" target="_blank">Privacy Policy</a>.</label>
+<p><button class="btn">Create account</button></p></form>`;
+if(mode==="company")f.innerHTML=`<form id="fm"><div class="notice info">Your company must be verified by an administrator before you can publish jobs. After confirming your email, log in and complete your company profile and documents.</div>
+<label>Contact person's full name</label><input name="full_name" required><label>Official email</label><input name="email" type="email" required>
+<label>Phone</label><input name="phone" type="tel" required><label>Password (min 8 characters)</label><input name="password" type="password" minlength="8" required>
+<label style="font-weight:400"><input type="checkbox" required> I agree to the <a href="terms.html" target="_blank">Terms</a> and <a href="privacy.html" target="_blank">Privacy Policy</a>.</label>
+<p><button class="btn">Register company account</button></p></form>`;
+$("#fm").onsubmit=submit;}
+async function submit(e){e.preventDefault();const m=$("#msg");msg(m,"");
+if(!sb)return msg(m,"Backend not connected. Add your Supabase keys in web/config.js.");
+const d=Object.fromEntries(new FormData(e.target));const btn=e.target.querySelector("button");btn.disabled=true;
+try{
+if(mode==="login"){const{error}=await sb.auth.signInWithPassword({email:d.email,password:d.password});if(error)throw error;
+ const{data:{user}}=await sb.auth.getUser();const{data:p}=await sb.from("profiles").select("role,suspended").eq("id",user.id).single();
+ if(p?.suspended){await sb.auth.signOut();throw new Error("This account has been suspended.");}
+ location.href=next||(p.role==="admin"||p.role==="loan_officer"?"admin.html":p.role==="company"?"company.html":"student.html");}
+else if(mode==="reset"){const{error}=await sb.auth.resetPasswordForEmail(d.email,{redirectTo:location.origin+location.pathname.replace("login.html","reset.html")});if(error)throw error;msg(m,"If that email has an account, a reset link has been sent.","ok");}
+else{const{password,email,...meta}=d;meta.account_type=mode;
+ const{data,error}=await sb.auth.signUp({email,password,options:{data:meta,emailRedirectTo:location.origin+location.pathname}});if(error)throw error;
+ msg(m,data.session?"Account created. Redirecting…":"Account created. Check your email and click the verification link, then log in.","ok");
+ if(data.session)location.href=mode==="company"?"company.html":"student.html";}
+}catch(err){msg(m,friendly(err));}finally{btn.disabled=false;}}
+render();
+</script></body></html>

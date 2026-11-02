@@ -1,0 +1,24 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Messages — Mukuba Hub</title><link rel="stylesheet" href="css/style.css"></head><body>
+<main id="m" style="max-width:860px"></main>
+<script src="config.js"></script>
+<script type="module">
+import {sb,layout,requireRole,esc,msg,friendly,fmtDate,label,$,$$} from "./js/app.js";
+const me=await requireRole(["student","company"]);if(!me)throw 0;await layout("");
+const KINDS={enquiry:"General enquiry",complaint:"Complaint",suggestion:"Suggestion",technical:"Technical support",loan_question:"Loan question",job_question:"Job application question"};
+$("#m").innerHTML=`<h1>Messages to administration</h1><div class="card"><h3>New message</h3><div id="nm"></div><form id="fm"><div class="row"><div><label>Type</label><select name="kind">${Object.entries(KINDS).map(([k,v])=>`<option value="${k}">${v}</option>`).join("")}</select></div><div><label>Subject</label><input name="subject" required></div></div><label>Message</label><textarea name="body" required></textarea><p><button class="btn">Send</button></p></form></div><h2>Conversations</h2><p><small>Includes messages from employers you applied to (students) or from applicants (companies).</small></p><div id="list"></div>`;
+async function list(){const{data,error}=await sb.from("threads").select("*").order("last_message_at",{ascending:false});
+ $("#list").innerHTML=error?`<div class="notice err">${esc(friendly(error))}</div>`:!data.length?'<div class="empty">No messages yet.</div>':data.map(t=>`<div class="card" style="margin:10px 0"><b>${esc(t.subject)}</b> <span class="chip">${KINDS[t.kind]}</span> ${t.resolved?'<span class="chip gold">Resolved</span>':""}<div><small>Last activity ${fmtDate(t.last_message_at)}</small></div><button class="btn sm" data-id="${t.id}">Open</button></div>`).join("");
+ $$("#list button").forEach(b=>b.onclick=()=>open(data.find(t=>t.id===b.dataset.id)));}
+async function open(t){const bg=document.createElement("div");bg.className="modal-bg";document.body.appendChild(bg);
+ async function draw(){const{data}=await sb.from("thread_messages").select("*").eq("thread_id",t.id).order("created_at");
+ bg.innerHTML=`<div class="modal"><h2>${esc(t.subject)}</h2>${(data||[]).map(m=>`<div class="card" style="margin:8px 0;${m.sender_id===me.id?"background:#eaf0fb":""}"><small>${m.sender_id===me.id?"You":t.recipient_id?(me.role==="student"?"Employer":"Applicant"):"Administration"} · ${fmtDate(m.created_at)}</small><p>${esc(m.body).replace(/\n/g,"<br>")}</p></div>`).join("")}<div id="rm"></div><textarea id="rb" placeholder="Write a reply…"></textarea><p><button class="btn" id="rs">Send reply</button> <button class="btn ghost" id="cl">Close</button></p></div>`;
+ $("#cl",bg).onclick=()=>{bg.remove();list();};
+ $("#rs",bg).onclick=async()=>{const body=$("#rb",bg).value.trim();if(!body)return;const{error}=await sb.from("thread_messages").insert({thread_id:t.id,sender_id:me.id,body});if(error)msg($("#rm",bg),friendly(error));else draw();};}
+ draw();}
+$("#fm").onsubmit=async e=>{e.preventDefault();const d=Object.fromEntries(new FormData(e.target));const b=e.target.querySelector("button");b.disabled=true;
+ try{const{data:t,error}=await sb.from("threads").insert({owner_id:me.id,kind:d.kind,subject:d.subject}).select().single();if(error)throw error;
+ const{error:e2}=await sb.from("thread_messages").insert({thread_id:t.id,sender_id:me.id,body:d.body});if(e2)throw e2;
+ msg($("#nm"),"Message sent.","ok");e.target.reset();list();}catch(x){msg($("#nm"),"Not sent: "+friendly(x));}b.disabled=false;};
+list();
+</script></body></html>

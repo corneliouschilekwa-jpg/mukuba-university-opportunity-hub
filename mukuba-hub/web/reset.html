@@ -1,0 +1,10 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Set new password — Mukuba Hub</title><link rel="stylesheet" href="css/style.css"></head><body>
+<main id="m" style="max-width:480px"></main>
+<script src="config.js"></script>
+<script type="module">
+import {sb,layout,configBanner,msg,friendly,$} from "./js/app.js";
+await layout("");
+$("#m").innerHTML=`${configBanner()}<div class="card"><h2>Set a new password</h2><div id="msg"></div><form id="fm"><label>New password (min 8 characters)</label><input type="password" name="p" minlength="8" required><p><button class="btn">Update password</button></p></form></div>`;
+$("#fm").onsubmit=async e=>{e.preventDefault();try{const{error}=await sb.auth.updateUser({password:e.target.p.value});if(error)throw error;msg($("#msg"),"Password updated. Redirecting to login…","ok");setTimeout(()=>location.href="login.html",1200);}catch(x){msg($("#msg"),friendly(x));}};
+</script></body></html>

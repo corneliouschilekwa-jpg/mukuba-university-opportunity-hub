@@ -1,0 +1,23 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Help Centre — Mukuba Hub</title><link rel="stylesheet" href="css/style.css"></head><body>
+<main id="m" style="max-width:820px"></main>
+<script src="config.js"></script>
+<script type="module">
+import {sb,layout,configBanner,msg,friendly,$} from "./js/app.js";
+const me=await layout("help.html");
+const FAQ=[["How do I register?","Choose “Login / Register”, open the Student registration tab, fill in your details (student number, NRC, programme, year) and confirm your email address."],
+["How do I find jobs?","Open Jobs. Search by title, company, location or type, or use “Find Jobs That Fit My Timetable” to match your free days and hours."],
+["How do I apply for a job?","Log in as a student, open a job, add an optional note and press Apply. Track it under My Dashboard → Applications."],
+["How do I register a company?","Choose Company registration, create the account, then complete your company profile and upload verification documents. An administrator must approve it before you can post jobs."],
+["How do I apply for a business loan?","Log in and open Business Loans. The application has six steps: personal, business, loan, next of kin, identity documents, and declaration."],
+["Which documents are required for a loan?","NRC front and back, student ID card, a recent passport-size photo, and a live selfie holding your NRC. All are stored privately."],
+["How do I track my applications?","Your dashboard shows each job or loan application with its status: Pending, Under Review, Approved, Rejected or Requires More Information."],
+["How do I contact the administrators?","Use the form below. If you are logged in you can also message them from your dashboard and read replies there."]];
+$("#m").innerHTML=`${configBanner()}<h1>Help Centre</h1>${FAQ.map(([q,a])=>`<details class="card" style="margin:8px 0"><summary><b>${q}</b></summary><p>${a}</p></details>`).join("")}
+<h2>Contact the administration</h2><div class="card"><div id="msg"></div><form id="fm"><div class="row"><div><label>Your name</label><input name="name" required value="${me?.full_name||""}"></div><div><label>Email</label><input name="email" type="email" required value="${me?.email||""}"></div></div>
+<label>Subject</label><input name="subject" required><label>Message</label><textarea name="message" minlength="5" required></textarea><p><button class="btn">Send</button></p></form></div>`;
+$("#fm").onsubmit=async e=>{e.preventDefault();const d=Object.fromEntries(new FormData(e.target));const b=e.target.querySelector("button");b.disabled=true;
+ if(!sb){msg($("#msg"),"Backend not connected.");b.disabled=false;return}
+ const{error}=await sb.from("support_requests").insert({...d,user_id:me?.id||null});
+ if(error)msg($("#msg"),"Could not send: "+friendly(error));else{msg($("#msg"),"Your request was sent. We will reply by email or in your dashboard.","ok");e.target.reset();}b.disabled=false;};
+</script></body></html>
